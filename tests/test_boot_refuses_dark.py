@@ -72,7 +72,14 @@ def test_main_exits_dark_without_an_estate(monkeypatch, capsys):
 def test_main_refuses_without_the_laws(monkeypatch, tmp_path, capsys):
     from infra_crew import main
 
-    env = dict(FULL_ENV, INFRA_CREW_LAWS_DIR=str(tmp_path))
+    # crewAI creates the storage directory the moment it is imported, so the store must be a
+    # real writable path here; the laws directory is empty on purpose.
+    env = dict(
+        FULL_ENV,
+        INFRA_CREW_LAWS_DIR=str(tmp_path / "laws"),
+        INFRA_CREW_STORAGE_DIR=str(tmp_path / "store"),
+    )
+    (tmp_path / "laws").mkdir()
     _set(monkeypatch, env)
     assert main.run(["42"]) == EXIT_DARK
     assert "law files missing" in capsys.readouterr().err
