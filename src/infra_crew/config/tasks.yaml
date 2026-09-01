@@ -1,0 +1,55 @@
+plan_task:
+  description: >
+    Read issue {issue_number} in the {board_repo} repository with read_issue. Restate the ask in
+    plain English. Search the target repository for prior art with list_directory and read_file.
+    Write the optimised plan: naive steps counted, bottleneck named, what is memoised,
+    parallelised, made lazy or batched, the count again, and the exact commands that define done.
+    Post the plan as one comment on the issue with comment_on_issue. The comment ends with a line
+    starting "Optimised:".
+  expected_output: >
+    The plan text as posted, plus the comment URL on its own last line.
+  agent: planner
+
+build_task:
+  description: >
+    Carry out the plan for issue {issue_number}. Create the branch infra-crew/{issue_number} in
+    the target repository named in the plan with create_branch, write each file with write_file
+    (one clear commit message each), then open one pull request with open_pull_request whose body
+    holds the ten named definition-of-done rows, an "## Options considered" section with two real
+    options, a "## Cleanup" section, and the line "Closes #{issue_number}" when the ticket lives in
+    the same repository. Then read the checks with read_pull_request_checks and report their state
+    exactly as returned. Do not claim green unless every check says success.
+  expected_output: >
+    The pull request URL on the first line, then the list of files changed, then the check results
+    verbatim.
+  agent: builder
+  context:
+    - plan_task
+
+verify_task:
+  description: >
+    Grade the pull request from build_task for issue {issue_number}. Read every changed file on
+    the branch with read_file and the checks with read_pull_request_checks. FAIL if any claim in
+    the body lacks a receipt, if any host, path, port, account or credential is a literal, if any
+    file adds a merge, deploy, dispatch or cluster hand to an agent, or if any check is not
+    success. Otherwise PASS. Post the verdict as one comment on the pull request with
+    comment_on_issue, first line "VERDICT: PASS" or "VERDICT: FAIL", then the reasons.
+  expected_output: >
+    "VERDICT: PASS" or "VERDICT: FAIL" on the first line, the reasons, and the comment URL on the
+    last line.
+  agent: verifier
+  context:
+    - build_task
+
+report_task:
+  description: >
+    Write the closing comment on issue {issue_number} with comment_on_issue in exactly five lines:
+    "Built:" one sentence; "Use:" the pull request URL; "Expect:" what merging it changes;
+    "Not done:" honest gaps including the verifier's verdict if FAIL; "Evidence:" the check URLs.
+    The founder merges and deploys; do not ask him to, and do not say DONE.
+  expected_output: >
+    The five-line comment as posted and its URL.
+  agent: builder
+  context:
+    - build_task
+    - verify_task
