@@ -16,6 +16,7 @@ import requests
 
 # method, path pattern (relative to the API root, no query string), plain-English purpose.
 ALLOWED_ROUTES: tuple[tuple[str, str, str], ...] = (
+    ("GET", r"/repos/[^/]+/[^/]+/issues", "list open board issues (the queue)"),
     ("GET", r"/repos/[^/]+/[^/]+/issues/\d+", "read one board issue"),
     ("GET", r"/repos/[^/]+/[^/]+/issues/\d+/comments", "read the comments on an issue"),
     ("POST", r"/repos/[^/]+/[^/]+/issues/\d+/comments", "write a comment on an issue or pull request"),
@@ -77,6 +78,14 @@ class GitHub:
     # -- read -------------------------------------------------------------------------------
     def issue(self, repo: str, number: int) -> dict:
         return self._call("GET", f"/repos/{repo}/issues/{number}")
+
+    def open_issues(self, repo: str, label: str) -> list[dict]:
+        data = self._call(
+            "GET",
+            f"/repos/{repo}/issues",
+            params={"state": "open", "labels": label, "sort": "created", "direction": "asc", "per_page": 50},
+        )
+        return [i for i in data if "pull_request" not in i]
 
     def issue_comments(self, repo: str, number: int) -> list[dict]:
         return self._call("GET", f"/repos/{repo}/issues/{number}/comments", params={"per_page": 100})

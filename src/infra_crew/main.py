@@ -29,16 +29,43 @@ def _langfuse_trace_count(est: estate_mod.Estate, run_id: str) -> int:
     return int(answer.json().get("meta", {}).get("totalItems", 0))
 
 
+QUEUE_LABEL = os.environ.get("INFRA_CREW_QUEUE_LABEL", "lane:infra")
+CLAIM_MARK = "Optimised:"  # a ticket with a plan comment ending in this line has been taken
+
+
+def next_ticket(est: estate_mod.Estate, board_repo: str) -> int | None:
+    """The queue: the oldest open ticket with the lane label and no plan comment yet. None when idle."""
+    from infra_crew.tools.github_client import GitHub
+
+    gh = GitHub(api=est.github_api, token=est.github_token)
+    repo = f"{est.repo_owner}/{board_repo}"
+    for issue in gh.open_issues(repo, QUEUE_LABEL):
+        comments = gh.issue_comments(repo, issue["number"])
+        if not any(CLAIM_MARK in (c.get("body") or "") for c in comments):
+            return int(issue["number"])
+    return None
+
+
 def run(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1 or not argv[0].isdigit():
-        print("usage: infra-crew <board issue number>", file=sys.stderr)
+    if len(argv) > 1 or (argv and not argv[0].isdigit()):
+        print(
+            "usage: infra-crew [board issue number]   (no number: take the next queued ticket)",
+            file=sys.stderr,
+        )
         return 2
-    issue_number = int(argv[0])
     board_repo = os.environ.get("INFRA_CREW_BOARD_REPO", "crew")
 
     try:
         est = estate_mod.load()
+        if argv:
+            issue_number = int(argv[0])
+        else:
+            queued = next_ticket(est, board_repo)
+            if queued is None:
+                print(f"idle: no open {QUEUE_LABEL} ticket without a plan comment")
+                return 0
+            issue_number = queued
         os.environ.setdefault("CREWAI_STORAGE_DIR", str(est.storage_dir))
         os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")  # the vendor's phone-home, not ours
         run_id = f"infra-crew-{issue_number}-{uuid.uuid4().hex[:8]}"
