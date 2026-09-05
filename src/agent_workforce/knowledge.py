@@ -44,7 +44,7 @@ def embedder(estate: Estate) -> dict:
     return {
         "provider": "openai",
         "config": {
-            "model": estate.embed_model,
+            "model_name": estate.embed_model,  # crewAI's OpenAI embedder key; "model" is ignored and ada-002 is tried
             "api_key": estate.router_key,
             "api_base": estate.router_base_url,
         },
