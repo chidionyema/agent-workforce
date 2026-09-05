@@ -83,3 +83,15 @@ def test_tasks_chain_and_the_build_task_is_guarded(est: Estate):
         "Builder",
     ]
     assert crew.verify_task().context == [build]
+
+
+def test_embedder_names_the_router_lane_by_the_key_crewai_reads(est: Estate):
+    """crewAI reads model_name; a config carrying only "model" embeds with text-embedding-ada-002 (crew#850)."""
+    from crewai.rag.embeddings.providers.openai.types import OpenAIProviderConfig
+
+    from agent_workforce.knowledge import embedder
+
+    cfg = embedder(est)["config"]
+    assert set(cfg) <= set(OpenAIProviderConfig.__annotations__), "a key crewAI does not read"
+    assert cfg["model_name"] == "embed-lane"
+    assert cfg["api_base"] == "http://router.test"
