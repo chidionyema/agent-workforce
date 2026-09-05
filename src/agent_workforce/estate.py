@@ -53,7 +53,7 @@ class Estate:
     langfuse_public_key: str
     langfuse_secret_key: str
     github_api: str
-    github_token: str  # an installation token narrowed to the infra-crew lane; never a person's login
+    github_token: str  # an installation token narrowed to the agent-workforce lane; never a person's login
     repo_owner: str
     laws_dir: Path  # the checked-out law and standards files the knowledge base is built from
     storage_dir: Path  # crewAI memory and knowledge stores (a volume in the pod)
@@ -64,19 +64,19 @@ def load() -> Estate:
     return Estate(
         router_base_url=_need("LITELLM_BASE_URL", "the address of the estate's model router"),
         router_key=_secret("LITELLM_API_KEY"),
-        model=_need("INFRA_CREW_MODEL", "the router alias the builder and planner use"),
-        verifier_model=_need("INFRA_CREW_VERIFIER_MODEL", "the router alias the verifier uses"),
-        embed_model=_need("INFRA_CREW_EMBED_MODEL", "the router alias for embeddings"),
+        model=_need("AGENT_WORKFORCE_MODEL", "the router alias the builder and planner use"),
+        verifier_model=_need("AGENT_WORKFORCE_VERIFIER_MODEL", "the router alias the verifier uses"),
+        embed_model=_need("AGENT_WORKFORCE_EMBED_MODEL", "the router alias for embeddings"),
         otel_endpoint=_need("OTEL_EXPORTER_OTLP_ENDPOINT", "the estate collector every workload emits to"),
         langfuse_base_url=_need("LANGFUSE_BASE_URL", "the tracing tool the founder reads"),
         langfuse_public_key=_secret("LANGFUSE_PUBLIC_KEY"),
         langfuse_secret_key=_secret("LANGFUSE_SECRET_KEY"),
         github_api=os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/"),
-        github_token=_secret("INFRA_CREW_GITHUB_TOKEN"),
-        repo_owner=_need("INFRA_CREW_REPO_OWNER", "the GitHub account that owns the estate repositories"),
-        laws_dir=Path(_need("INFRA_CREW_LAWS_DIR", "the directory holding the law and standards files")),
+        github_token=_secret("AGENT_WORKFORCE_GITHUB_TOKEN"),
+        repo_owner=_need("AGENT_WORKFORCE_REPO_OWNER", "the GitHub account that owns the estate repositories"),
+        laws_dir=Path(_need("AGENT_WORKFORCE_LAWS_DIR", "the directory holding the law and standards files")),
         storage_dir=Path(
             os.environ.get("CREWAI_STORAGE_DIR", "")
-            or _need("INFRA_CREW_STORAGE_DIR", "the crew's memory volume")
+            or _need("AGENT_WORKFORCE_STORAGE_DIR", "the crew's memory volume")
         ),
     )

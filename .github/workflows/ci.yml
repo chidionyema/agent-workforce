@@ -44,11 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        run: docker build -t infra-crew:ci .
+        run: docker build -t agent-workforce:ci .
       - name: A dark container exits 3 with a REFUSED line
         run: |
           set +e
-          out=$(docker run --rm infra-crew:ci 1 2>&1)
+          out=$(docker run --rm agent-workforce:ci 1 2>&1)
           code=$?
           echo "$out"
           test "$code" -eq 3 && echo "$out" | grep -q '^REFUSED:'

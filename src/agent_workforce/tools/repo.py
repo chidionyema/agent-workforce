@@ -1,6 +1,6 @@
 """The repository: read files, write on the crew's own branch, open a pull request, read its checks.
 
-The crew's branches all start with `infra-crew/` and it may write nowhere else: the branch prefix
+The crew's branches all start with `agent-workforce/` and it may write nowhere else: the branch prefix
 is the only place its commits can land, and the pull request is the only way they move.
 """
 
@@ -10,9 +10,9 @@ import json
 
 from crewai.tools import tool
 
-from infra_crew.tools._client import full, github
+from agent_workforce.tools._client import full, github
 
-BRANCH_PREFIX = "infra-crew/"
+BRANCH_PREFIX = "agent-workforce/"
 
 
 def _own(branch: str) -> str:
@@ -38,7 +38,7 @@ def list_directory(repo: str, path: str = "", ref: str = "main") -> str:
 
 @tool("create_branch")
 def create_branch(repo: str, branch: str, from_branch: str = "main") -> str:
-    """Create the crew's own branch (name must start with 'infra-crew/'). Returns the base commit."""
+    """Create the crew's own branch (name must start with 'agent-workforce/'). Returns the base commit."""
     return github().create_branch(full(repo), _own(branch), from_branch)
 
 

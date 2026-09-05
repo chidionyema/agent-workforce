@@ -15,15 +15,15 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from infra_crew.estate import Estate
+from agent_workforce.estate import Estate
 
-SERVICE_NAME = "infra-crew"
+SERVICE_NAME = "agent-workforce"
 
 
 def install(estate: Estate, run_id: str) -> TracerProvider:
     """One provider, two exporters: the collector (LAW 50) and Langfuse's OTLP door."""
     provider = TracerProvider(
-        resource=Resource.create({"service.name": SERVICE_NAME, "infra_crew.run_id": run_id})
+        resource=Resource.create({"service.name": SERVICE_NAME, "agent_workforce.run_id": run_id})
     )
     provider.add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{estate.otel_endpoint.rstrip('/')}/v1/traces"))

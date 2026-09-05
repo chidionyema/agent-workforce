@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from infra_crew import main
-from infra_crew.estate import Estate
-from infra_crew.tools.github_client import GitHub
+from agent_workforce import main
+from agent_workforce.estate import Estate
+from agent_workforce.tools.github_client import GitHub
 
 
 def _estate(tmp_path) -> Estate:
@@ -26,11 +26,16 @@ def _estate(tmp_path) -> Estate:
 
 
 def test_oldest_unplanned_ticket_wins(monkeypatch, tmp_path):
-    seen: list[str] = []
+    """Every queued lane is asked, and the board's own creation order decides which ticket is oldest."""
+    asked: list[str] = []
+    tickets = {
+        "lane:platform": [{"number": 7, "created_at": "2026-09-01T00:00:00Z"}],
+        "lane:agents": [{"number": 9, "created_at": "2026-09-02T00:00:00Z"}],
+    }
     monkeypatch.setattr(
         GitHub,
         "open_issues",
-        lambda self, repo, label: seen.append(f"{repo} {label}") or [{"number": 7}, {"number": 9}],
+        lambda self, repo, label: asked.append(f"{repo} {label}") or tickets.get(label, []),
     )
     monkeypatch.setattr(
         GitHub,
@@ -38,10 +43,28 @@ def test_oldest_unplanned_ticket_wins(monkeypatch, tmp_path):
         lambda self, repo, n: [{"body": "plan ... Optimised: 9 -> 3"}] if n == 7 else [],
     )
     assert main.next_ticket(_estate(tmp_path), "crew") == 9
-    assert seen == ["owner/crew lane:infra"]
+    assert asked == [f"owner/crew {label}" for label in main.QUEUE_LABELS]
+
+
+def test_every_queued_lane_exists_on_the_board():
+    """A label the board does not carry matches nothing, and the crew idles forever (crew#850 CP0)."""
+    assert "lane:infra" not in main.QUEUE_LABELS
+    assert set(main.QUEUE_LABELS) <= {
+        "lane:agents",
+        "lane:platform",
+        "lane:security",
+        "lane:money",
+        "lane:observability",
+        "lane:process",
+        "lane:science",
+        "lane:dr",
+        "lane:unsorted",
+    }
 
 
 def test_idle_when_every_ticket_is_planned(monkeypatch, tmp_path):
-    monkeypatch.setattr(GitHub, "open_issues", lambda self, repo, label: [{"number": 7}])
+    monkeypatch.setattr(
+        GitHub, "open_issues", lambda self, repo, label: [{"number": 7, "created_at": "2026-09-01T00:00:00Z"}]
+    )
     monkeypatch.setattr(GitHub, "issue_comments", lambda self, repo, n: [{"body": "Optimised: done"}])
     assert main.next_ticket(_estate(tmp_path), "crew") is None
