@@ -1,4 +1,4 @@
-"""Entry point: `infra-crew <issue-number>` takes one board ticket to a green pull request.
+"""Entry point: `agent-workforce <issue-number>` takes one board ticket to a green pull request.
 
 Order at boot: read the estate (refuse dark), point crewAI's stores at the volume, install the
 two trace exporters, check the laws are present, run, then prove the trace landed by querying
@@ -13,8 +13,8 @@ import uuid
 
 import requests
 
-from infra_crew import estate as estate_mod
-from infra_crew.estate import EXIT_DARK, Dark
+from agent_workforce import estate as estate_mod
+from agent_workforce.estate import EXIT_DARK, Dark
 
 
 def _langfuse_trace_count(est: estate_mod.Estate, run_id: str) -> int:
@@ -29,17 +29,40 @@ def _langfuse_trace_count(est: estate_mod.Estate, run_id: str) -> int:
     return int(answer.json().get("meta", {}).get("totalItems", 0))
 
 
-QUEUE_LABEL = os.environ.get("INFRA_CREW_QUEUE_LABEL", "lane:infra")
+# The lanes the workforce takes work from. These are the labels the board actually carries; a
+# label that does not exist on the board matches nothing, which is how the first deployment ran
+# for a fortnight without ever picking up a ticket (crew#850 CP0).
+DEFAULT_QUEUE_LABELS = (
+    "lane:platform",
+    "lane:agents",
+    "lane:observability",
+    "lane:security",
+    "lane:process",
+    "lane:dr",
+)
+QUEUE_LABELS = tuple(
+    label.strip()
+    for label in os.environ.get("AGENT_WORKFORCE_QUEUE_LABELS", ",".join(DEFAULT_QUEUE_LABELS)).split(",")
+    if label.strip()
+)
 CLAIM_MARK = "Optimised:"  # a ticket with a plan comment ending in this line has been taken
 
 
 def next_ticket(est: estate_mod.Estate, board_repo: str) -> int | None:
-    """The queue: the oldest open ticket with the lane label and no plan comment yet. None when idle."""
-    from infra_crew.tools.github_client import GitHub
+    """The queue: the oldest open ticket in any queued lane with no plan comment yet. None when idle.
+
+    GitHub's `labels` filter is an AND, so one call per lane and merge; the board's own creation
+    order decides which of them is oldest.
+    """
+    from agent_workforce.tools.github_client import GitHub
 
     gh = GitHub(api=est.github_api, token=est.github_token)
     repo = f"{est.repo_owner}/{board_repo}"
-    for issue in gh.open_issues(repo, QUEUE_LABEL):
+    queued: dict[int, dict] = {}
+    for label in QUEUE_LABELS:
+        for issue in gh.open_issues(repo, label):
+            queued.setdefault(int(issue["number"]), issue)
+    for _, issue in sorted(queued.items(), key=lambda kv: (kv[1].get("created_at") or "", kv[0])):
         comments = gh.issue_comments(repo, issue["number"])
         if not any(CLAIM_MARK in (c.get("body") or "") for c in comments):
             return int(issue["number"])
@@ -50,11 +73,11 @@ def run(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) > 1 or (argv and not argv[0].isdigit()):
         print(
-            "usage: infra-crew [board issue number]   (no number: take the next queued ticket)",
+            "usage: agent-workforce [board issue number]   (no number: take the next queued ticket)",
             file=sys.stderr,
         )
         return 2
-    board_repo = os.environ.get("INFRA_CREW_BOARD_REPO", "crew")
+    board_repo = os.environ.get("AGENT_WORKFORCE_BOARD_REPO", "crew")
 
     try:
         est = estate_mod.load()
@@ -63,14 +86,14 @@ def run(argv: list[str] | None = None) -> int:
         else:
             queued = next_ticket(est, board_repo)
             if queued is None:
-                print(f"idle: no open {QUEUE_LABEL} ticket without a plan comment")
+                print(f"idle: no open ticket without a plan comment in {', '.join(QUEUE_LABELS)}")
                 return 0
             issue_number = queued
         os.environ.setdefault("CREWAI_STORAGE_DIR", str(est.storage_dir))
         os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")  # the vendor's phone-home, not ours
-        run_id = f"infra-crew-{issue_number}-{uuid.uuid4().hex[:8]}"
+        run_id = f"agent-workforce-{issue_number}-{uuid.uuid4().hex[:8]}"
 
-        from infra_crew import knowledge, observability
+        from agent_workforce import knowledge, observability
 
         knowledge.law_paths(est.laws_dir)
         provider = observability.install(est, run_id)
@@ -80,15 +103,15 @@ def run(argv: list[str] | None = None) -> int:
 
     from opentelemetry import trace
 
-    from infra_crew.crew import InfraCrew
+    from agent_workforce.crew import AgentWorkforce
 
-    tracer = trace.get_tracer("infra_crew")
+    tracer = trace.get_tracer("agent_workforce")
     with tracer.start_as_current_span(
-        "infra-crew.run",
+        "agent-workforce.run",
         attributes={"langfuse.session.id": run_id, "session.id": run_id, "board.issue": issue_number},
     ):
         result = (
-            InfraCrew(est).crew().kickoff(inputs={"issue_number": issue_number, "board_repo": board_repo})
+            AgentWorkforce(est).crew().kickoff(inputs={"issue_number": issue_number, "board_repo": board_repo})
         )
     provider.force_flush()
     print(result.raw)

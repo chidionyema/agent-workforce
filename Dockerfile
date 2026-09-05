@@ -13,10 +13,10 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir . \
-    && mkdir -p /var/lib/infra-crew /laws \
-    && chown -R crew:crew /var/lib/infra-crew /laws
+    && mkdir -p /var/lib/agent-workforce /laws \
+    && chown -R crew:crew /var/lib/agent-workforce /laws
 
 USER crew
-# INFRA_CREW_STORAGE_DIR is a volume; INFRA_CREW_LAWS_DIR is filled by an init step that checks
+# AGENT_WORKFORCE_STORAGE_DIR is a volume; AGENT_WORKFORCE_LAWS_DIR is filled by an init step that checks
 # out the law files. Both are set by the workload manifest, not here.
-ENTRYPOINT ["infra-crew"]
+ENTRYPOINT ["agent-workforce"]

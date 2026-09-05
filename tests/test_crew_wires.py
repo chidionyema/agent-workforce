@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from infra_crew.estate import Estate
+from agent_workforce.estate import Estate
 
 pytest.importorskip("crewai")
 
 
 @pytest.fixture
 def est(tmp_path: Path) -> Estate:
-    from infra_crew.knowledge import LAW_FILES
+    from agent_workforce.knowledge import LAW_FILES
 
     for name in LAW_FILES:
         (tmp_path / name).write_text(f"# {name}\n", encoding="utf-8")
@@ -35,9 +35,9 @@ def est(tmp_path: Path) -> Estate:
 
 
 def test_roles_tools_and_lanes(est: Estate):
-    from infra_crew.crew import InfraCrew
+    from agent_workforce.crew import AgentWorkforce
 
-    crew = InfraCrew(est)
+    crew = AgentWorkforce(est)
     names = lambda agent: {t.name for t in agent.tools}  # noqa: E731
 
     assert "open_pull_request" in names(crew.builder())
@@ -57,9 +57,9 @@ def test_roles_tools_and_lanes(est: Estate):
 
 
 def test_tasks_chain_and_the_build_task_is_guarded(est: Estate):
-    from infra_crew.crew import InfraCrew
+    from agent_workforce.crew import AgentWorkforce
 
-    crew = InfraCrew(est)
+    crew = AgentWorkforce(est)
     build = crew.build_task()
     assert build.agent.role == "Builder"
     assert build.guardrail is not None

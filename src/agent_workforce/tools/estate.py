@@ -11,10 +11,10 @@ import os
 
 from crewai.tools import tool
 
-from infra_crew.tools._client import full, github
+from agent_workforce.tools._client import full, github
 
-PLATFORM_REPO = os.environ.get("INFRA_CREW_PLATFORM_REPO", "idp")
-DEPLOY_LOG_WORKFLOW = os.environ.get("INFRA_CREW_DEPLOY_LOG_WORKFLOW", "flux-events.yml")
+PLATFORM_REPO = os.environ.get("AGENT_WORKFORCE_PLATFORM_REPO", "idp")
+DEPLOY_LOG_WORKFLOW = os.environ.get("AGENT_WORKFORCE_DEPLOY_LOG_WORKFLOW", "flux-events.yml")
 
 
 @tool("read_estate_runs")

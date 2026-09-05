@@ -4,23 +4,23 @@ from __future__ import annotations
 
 import pytest
 
-from infra_crew import estate
-from infra_crew.estate import EXIT_DARK, Dark
+from agent_workforce import estate
+from agent_workforce.estate import EXIT_DARK, Dark
 
 FULL_ENV = {
     "LITELLM_BASE_URL": "http://router.test",
     "LITELLM_API_KEY": "k",
-    "INFRA_CREW_MODEL": "m",
-    "INFRA_CREW_VERIFIER_MODEL": "v",
-    "INFRA_CREW_EMBED_MODEL": "e",
+    "AGENT_WORKFORCE_MODEL": "m",
+    "AGENT_WORKFORCE_VERIFIER_MODEL": "v",
+    "AGENT_WORKFORCE_EMBED_MODEL": "e",
     "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.test",
     "LANGFUSE_BASE_URL": "http://langfuse.test",
     "LANGFUSE_PUBLIC_KEY": "pk",
     "LANGFUSE_SECRET_KEY": "sk",
-    "INFRA_CREW_GITHUB_TOKEN": "t",
-    "INFRA_CREW_REPO_OWNER": "owner",
-    "INFRA_CREW_LAWS_DIR": "/laws",
-    "INFRA_CREW_STORAGE_DIR": "/store",
+    "AGENT_WORKFORCE_GITHUB_TOKEN": "t",
+    "AGENT_WORKFORCE_REPO_OWNER": "owner",
+    "AGENT_WORKFORCE_LAWS_DIR": "/laws",
+    "AGENT_WORKFORCE_STORAGE_DIR": "/store",
 }
 
 
@@ -36,7 +36,7 @@ def test_full_environment_loads(monkeypatch):
     _set(monkeypatch, FULL_ENV)
     est = estate.load()
     assert est.router_base_url == "http://router.test"
-    expected = FULL_ENV["INFRA_CREW_GITHUB_TOKEN"]
+    expected = FULL_ENV["AGENT_WORKFORCE_GITHUB_TOKEN"]
     assert est.github_token == expected
 
 
@@ -52,17 +52,17 @@ def test_each_missing_value_refuses(monkeypatch, missing: str):
 
 def test_secret_may_come_from_a_mounted_file(monkeypatch, tmp_path):
     env = dict(FULL_ENV)
-    del env["INFRA_CREW_GITHUB_TOKEN"]
+    del env["AGENT_WORKFORCE_GITHUB_TOKEN"]
     secret = tmp_path / "token"
     secret.write_text("from-file\n", encoding="utf-8")
     _set(monkeypatch, env)
-    monkeypatch.setenv("INFRA_CREW_GITHUB_TOKEN_FILE", str(secret))
+    monkeypatch.setenv("AGENT_WORKFORCE_GITHUB_TOKEN_FILE", str(secret))
     expected = secret.read_text(encoding="utf-8").strip()
     assert estate.load().github_token == expected
 
 
 def test_main_exits_dark_without_an_estate(monkeypatch, capsys):
-    from infra_crew import main
+    from agent_workforce import main
 
     _set(monkeypatch, {})
     assert main.run(["42"]) == EXIT_DARK
@@ -70,14 +70,14 @@ def test_main_exits_dark_without_an_estate(monkeypatch, capsys):
 
 
 def test_main_refuses_without_the_laws(monkeypatch, tmp_path, capsys):
-    from infra_crew import main
+    from agent_workforce import main
 
     # crewAI creates the storage directory the moment it is imported, so the store must be a
     # real writable path here; the laws directory is empty on purpose.
     env = dict(
         FULL_ENV,
-        INFRA_CREW_LAWS_DIR=str(tmp_path / "laws"),
-        INFRA_CREW_STORAGE_DIR=str(tmp_path / "store"),
+        AGENT_WORKFORCE_LAWS_DIR=str(tmp_path / "laws"),
+        AGENT_WORKFORCE_STORAGE_DIR=str(tmp_path / "store"),
     )
     (tmp_path / "laws").mkdir()
     _set(monkeypatch, env)

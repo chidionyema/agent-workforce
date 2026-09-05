@@ -7,7 +7,7 @@ import re
 
 from crewai.tools import tool
 
-from infra_crew.tools._client import full, github
+from agent_workforce.tools._client import full, github
 
 # Words that never reach a founder surface (founder 2026-08-27 and 2026-08-31).
 BANNED_ON_SURFACES = re.compile(r"\b(days?|weeks?|TODO|WIP|lgtm|ptal|nit)\b", re.IGNORECASE)
@@ -47,4 +47,4 @@ def comment_on_issue(repo: str, number: int, body: str) -> str:
 @tool("open_incident_issue")
 def open_incident_issue(repo: str, title: str, body: str) -> str:
     """File an incident issue on the board (the watcher's only write). Returns the issue URL."""
-    return github().open_issue(full(repo), _plain(title), _plain(body), labels=["incident", "lane:infra"])
+    return github().open_issue(full(repo), _plain(title), _plain(body), labels=["incident", "lane:observability"])

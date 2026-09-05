@@ -7,9 +7,9 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.project import CrewBase, agent, crew, task
 from crewai.tasks.llm_guardrail import LLMGuardrail
 
-from infra_crew import knowledge
-from infra_crew.estate import Estate
-from infra_crew.tools import READ_TOOLS, WATCH_TOOLS, WRITE_TOOLS
+from agent_workforce import knowledge
+from agent_workforce.estate import Estate
+from agent_workforce.tools import READ_TOOLS, WATCH_TOOLS, WRITE_TOOLS
 
 VERIFIER_GUARDRAIL = (
     "The result names a pull request URL and reports check results verbatim. It does not claim a "
@@ -26,7 +26,7 @@ def router_llm(estate: Estate, alias: str) -> LLM:
 
 
 @CrewBase
-class InfraCrew:
+class AgentWorkforce:
     """Plans, builds and verifies one board ticket to a green pull request, then stops."""
 
     agents: list[BaseAgent]

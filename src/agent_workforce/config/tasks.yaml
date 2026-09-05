@@ -12,7 +12,7 @@ plan_task:
 
 build_task:
   description: >
-    Carry out the plan for issue {issue_number}. Create the branch infra-crew/{issue_number} in
+    Carry out the plan for issue {issue_number}. Create the branch agent-workforce/{issue_number} in
     the target repository named in the plan with create_branch, write each file with write_file
     (one clear commit message each), then open one pull request with open_pull_request whose body
     holds the ten named definition-of-done rows, an "## Options considered" section with two real

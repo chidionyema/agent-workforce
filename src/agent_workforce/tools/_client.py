@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from infra_crew.estate import load
-from infra_crew.tools.github_client import GitHub
+from agent_workforce.estate import load
+from agent_workforce.tools.github_client import GitHub
 
 
 @lru_cache(maxsize=1)

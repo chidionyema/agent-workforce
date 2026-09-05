@@ -1,6 +1,6 @@
 """The laws are the crew's knowledge base, not a pasted prompt.
 
-The files are checked out from the estate's own repositories into INFRA_CREW_LAWS_DIR by the
+The files are checked out from the estate's own repositories into AGENT_WORKFORCE_LAWS_DIR by the
 workload (an init step that clones the crew repository's docs and the founder's law files), and
 embedded once through the router's embedding lane. Every task retrieves from them at need, so a
 context reset can never lose a ruling.
@@ -12,7 +12,7 @@ from pathlib import Path
 
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
-from infra_crew.estate import Dark, Estate
+from agent_workforce.estate import Dark, Estate
 
 # The names are fixed; the directory is not (LAW 46). Any of them missing is a refusal: a crew
 # that cannot read the laws does not get to act.

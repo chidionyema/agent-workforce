@@ -7,9 +7,9 @@ wants one of those has to ask him on the board, in words.
 
 from __future__ import annotations
 
-from infra_crew.tools.board import comment_on_issue, open_incident_issue, read_issue
-from infra_crew.tools.estate import read_deploy_log, read_estate_runs, read_job_log
-from infra_crew.tools.repo import (
+from agent_workforce.tools.board import comment_on_issue, open_incident_issue, read_issue
+from agent_workforce.tools.estate import read_deploy_log, read_estate_runs, read_job_log
+from agent_workforce.tools.repo import (
     create_branch,
     list_directory,
     open_pull_request,

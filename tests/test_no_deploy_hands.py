@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "infra_crew"
+SRC = Path(__file__).resolve().parents[1] / "src" / "agent_workforce"
 
 # Route shapes a crew must never have. Each one is a hand the founder kept for himself.
 FORBIDDEN_ROUTE_PARTS = (
@@ -77,7 +77,7 @@ def _identifiers(path: Path) -> set[str]:
 
 
 def test_route_allow_list_has_no_forbidden_hand():
-    from infra_crew.tools.github_client import ALLOWED_ROUTES
+    from agent_workforce.tools.github_client import ALLOWED_ROUTES
 
     for method, path, _ in ALLOWED_ROUTES:
         for part in FORBIDDEN_ROUTE_PARTS:
@@ -106,7 +106,7 @@ def test_route_allow_list_has_no_forbidden_hand():
     ],
 )
 def test_client_refuses_forbidden_routes(method: str, path: str):
-    from infra_crew.tools.github_client import GitHub, RouteRefused, route_allowed
+    from agent_workforce.tools.github_client import GitHub, RouteRefused, route_allowed
 
     assert not route_allowed(method, path)
     no_token = str(len(path))
@@ -115,7 +115,7 @@ def test_client_refuses_forbidden_routes(method: str, path: str):
 
 
 def test_registered_tools_carry_no_forbidden_verb():
-    from infra_crew.tools import ALL_TOOLS
+    from agent_workforce.tools import ALL_TOOLS
 
     names = {t.name for t in ALL_TOOLS}
     assert names == {
