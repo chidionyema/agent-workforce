@@ -6,6 +6,10 @@ name: image
 on:
   push:
     branches: [main]
+  # Renaming the repository does not rename the container package: `github.repository` is read
+  # when a run starts, so the image only moves to the new name on the next publish. This lets
+  # that publish be asked for without an empty commit.
+  workflow_dispatch:
 
 permissions:
   contents: read
