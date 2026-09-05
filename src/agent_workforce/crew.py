@@ -19,9 +19,18 @@ VERIFIER_GUARDRAIL = (
 
 
 def router_llm(estate: Estate, alias: str) -> LLM:
-    """Every model call goes through the estate router; the alias picks the lane, the router picks the vendor."""
+    """Every model call goes through the estate router; the alias picks the lane, the router picks the vendor.
+
+    ``provider="openai"`` is explicit on purpose. With a prefixed name (``openai/<alias>``) crewAI looks the
+    alias up in its own OpenAI model table, misses, and hands the call to LiteLLM, which the image does not
+    ship: every crew run died at boot with ``Fallback to LiteLLM is not available`` (idp crew#850).
+    """
     return LLM(
-        model=f"openai/{alias}", base_url=estate.router_base_url, api_key=estate.router_key, temperature=0
+        model=alias,
+        provider="openai",
+        base_url=estate.router_base_url,
+        api_key=estate.router_key,
+        temperature=0,
     )
 
 

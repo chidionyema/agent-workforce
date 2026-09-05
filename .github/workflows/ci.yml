@@ -35,7 +35,7 @@ jobs:
       - name: The crew refuses to boot dark
         run: pytest tests/test_boot_refuses_dark.py
       - name: Nothing names where the estate lives
-        run: pytest tests/test_config_no_literals.py tests/test_tools_write_only_own_branch.py
+        run: pytest tests/test_config_no_literals.py tests/test_tools_write_only_own_branch.py tests/test_crew_wires.py tests/test_queue.py
 
   image:
     name: image builds and refuses to boot dark

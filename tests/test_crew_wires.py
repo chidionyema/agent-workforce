@@ -51,9 +51,22 @@ def test_roles_tools_and_lanes(est: Estate):
     assert "write_file" not in names(crew.watcher())
     assert crew.manager().tools == []
 
-    assert crew.verifier().llm.model == "openai/verifier-lane"
-    assert crew.builder().llm.model == "openai/builder-lane"
+    assert crew.verifier().llm.model == "verifier-lane"
+    assert crew.builder().llm.model == "builder-lane"
     assert crew.builder().llm.base_url == "http://router.test"
+
+
+def test_every_lane_is_the_native_openai_client_with_no_litellm(est: Estate, monkeypatch: pytest.MonkeyPatch):
+    """The image ships no LiteLLM. A lane crewAI cannot place natively raised ImportError at boot (crew#850)."""
+    import crewai.llm as crewai_llm
+
+    from agent_workforce.crew import AgentWorkforce
+
+    monkeypatch.setattr(crewai_llm, "LITELLM_AVAILABLE", False)
+    crew = AgentWorkforce(est)
+    for lane in (crew.llm, crew.verifier_llm):
+        assert lane.provider == "openai"
+        assert not lane.is_litellm
 
 
 def test_tasks_chain_and_the_build_task_is_guarded(est: Estate):
