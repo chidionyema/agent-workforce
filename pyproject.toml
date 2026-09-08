@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "A brand-new agent workforce on crewAI: plans, builds and verifies platform work to a green pull request, then stops. It has no merge, deploy or cluster hand."
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "crewai==1.9.3",
+    # 1.9.3 crashes its own task output guardrail (the model returns prose and crewAI's
+    # 1.9.x LLMGuardrailResult demands strict JSON -> every plan_task errors and the lane
+    # delivers nothing). The runtime banner asked for >=1.10.1 and the Pydantic guardrail
+    # parser fix landed there. Full migration to the 1.15.20 + planning/reasoning target is
+    # crew#854, a sequenced checkpoint that follows the memory change crew#853; this pin
+    # clears the crash only (activated 2026-09-08).
+    "crewai==1.10.1",
     "requests>=2.32",
     "pyyaml>=6",
     "opentelemetry-sdk>=1.27",
