@@ -1,0 +1,13 @@
+id: auto-agent-workforce
+name: agent-workforce
+repo: agent-workforce
+path: agent-workforce
+state: HAS_CLUSTER_MANIFEST
+git_branch: main
+last_commit: '2026-09-05'
+code_files: 18
+test_files: 6
+indicators:
+- Dockerfile
+- pyproject.toml
+requires_deep_review: true
