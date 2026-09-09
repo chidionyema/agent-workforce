@@ -4,13 +4,19 @@ version = "0.1.0"
 description = "A brand-new agent workforce on crewAI: plans, builds and verifies platform work to a green pull request, then stops. It has no merge, deploy or cluster hand."
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    # 1.9.3 crashes its own task output guardrail (the model returns prose and crewAI's
-    # 1.9.x LLMGuardrailResult demands strict JSON -> every plan_task errors and the lane
-    # delivers nothing). The runtime banner asked for >=1.10.1 and the Pydantic guardrail
-    # parser fix landed there. Full migration to the 1.15.20 + planning/reasoning target is
-    # crew#854, a sequenced checkpoint that follows the memory change crew#853; this pin
-    # clears the crash only (activated 2026-09-08).
-    "crewai==1.10.1",
+    # crew#854 / crew#850 CP5: crewai 1.15.20. The chain to get here was measured, not guessed:
+    # 1.9.3 crashed its own task-output guardrail (prose instead of strict JSON -> the lane
+    # delivered nothing); 1.10.1 cleared the dependency banner but the LLMGuardrail call itself
+    # still made the verifier model return markdown-fenced JSON, which failed the same parse. A
+    # live router probe (fast lane) proved the lane WILL return clean JSON under a
+    # response_format call; 1.15.20's guardrail issues that call natively, which is why the
+    # upgrade is the fix and a pin bump alone was not. 2026-09-08.
+    #
+    # The reasoning/planning/crew.test enhancement layer of #854 is sequenced behind the CP4
+    # memory change (crew#853) and NOT yet enabled here; this pin lands the framework upgrade
+    # and its forced breaking changes, which is the activation need.
+    "crewai==1.15.20",
+    "crewai-tools==1.15.20",
     "requests>=2.32",
     "pyyaml>=6",
     "opentelemetry-sdk>=1.27",
