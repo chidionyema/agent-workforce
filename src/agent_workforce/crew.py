@@ -9,7 +9,7 @@ from crewai.tasks.llm_guardrail import LLMGuardrail
 
 from agent_workforce import knowledge
 from agent_workforce.estate import Estate
-from agent_workforce.tools import READ_TOOLS, WATCH_TOOLS, WRITE_TOOLS
+from agent_workforce.tools import MEMORY_TOOLS, READ_TOOLS, WATCH_TOOLS, WRITE_TOOLS
 
 VERIFIER_GUARDRAIL = (
     "The result names a pull request URL and reports check results verbatim. It does not claim a "
@@ -58,21 +58,29 @@ class AgentWorkforce:
 
     @agent
     def planner(self) -> Agent:
-        return Agent(config=self.agents_config["planner"], llm=self.llm, tools=READ_TOOLS + WRITE_TOOLS[:1])
+        return Agent(
+            config=self.agents_config["planner"], llm=self.llm, tools=READ_TOOLS + WRITE_TOOLS[:1] + MEMORY_TOOLS
+        )
 
     @agent
     def builder(self) -> Agent:
-        return Agent(config=self.agents_config["builder"], llm=self.llm, tools=READ_TOOLS + WRITE_TOOLS)
+        return Agent(
+            config=self.agents_config["builder"], llm=self.llm, tools=READ_TOOLS + WRITE_TOOLS + MEMORY_TOOLS
+        )
 
     @agent
     def verifier(self) -> Agent:
         return Agent(
-            config=self.agents_config["verifier"], llm=self.verifier_llm, tools=READ_TOOLS + WRITE_TOOLS[:1]
+            config=self.agents_config["verifier"],
+            llm=self.verifier_llm,
+            tools=READ_TOOLS + WRITE_TOOLS[:1] + MEMORY_TOOLS,
         )
 
     @agent
     def watcher(self) -> Agent:
-        return Agent(config=self.agents_config["watcher"], llm=self.llm, tools=READ_TOOLS + WATCH_TOOLS)
+        return Agent(
+            config=self.agents_config["watcher"], llm=self.llm, tools=READ_TOOLS + WATCH_TOOLS + MEMORY_TOOLS
+        )
 
     @task
     def plan_task(self) -> Task:

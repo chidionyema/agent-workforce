@@ -6,6 +6,9 @@ plan_task:
     parallelised, made lazy or batched, the count again, and the exact commands that define done.
     Post the plan as one comment on the issue with comment_on_issue. The comment ends with a line
     starting "Optimised:".
+    What the estate's shared memory already holds about this work (earlier runs, Otto, the
+    founder's own sessions); weigh it, and check anything that may have changed since:
+    {estate_memory}
   expected_output: >
     The plan text as posted, plus the comment URL on its own last line.
   agent: planner
