@@ -131,6 +131,8 @@ def test_registered_tools_carry_no_forbidden_verb():
         "write_file",
         "open_pull_request",
         "open_incident_issue",
+        "recall",
+        "remember",
     }, f"the tool list changed: {sorted(names)}; this test is the record of every hand the crew has"
     for t in ALL_TOOLS:
         text = f"{t.name} {t.description}"

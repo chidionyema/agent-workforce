@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from agent_workforce.tools.board import comment_on_issue, open_incident_issue, read_issue
 from agent_workforce.tools.estate import read_deploy_log, read_estate_runs, read_job_log
+from agent_workforce.tools.memory import recall, remember
 from agent_workforce.tools.repo import (
     create_branch,
     list_directory,
@@ -29,7 +30,9 @@ READ_TOOLS = [
 ]
 WRITE_TOOLS = [comment_on_issue, create_branch, write_file, open_pull_request]
 WATCH_TOOLS = [open_incident_issue]
+# The estate's shared memory. Every role gets it; it reads and writes memory, never a repository.
+MEMORY_TOOLS = [recall, remember]
 
-ALL_TOOLS = READ_TOOLS + WRITE_TOOLS + WATCH_TOOLS
+ALL_TOOLS = READ_TOOLS + WRITE_TOOLS + WATCH_TOOLS + MEMORY_TOOLS
 
-__all__ = ["ALL_TOOLS", "READ_TOOLS", "WATCH_TOOLS", "WRITE_TOOLS"]
+__all__ = ["ALL_TOOLS", "MEMORY_TOOLS", "READ_TOOLS", "WATCH_TOOLS", "WRITE_TOOLS"]

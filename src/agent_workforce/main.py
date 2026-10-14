@@ -1,8 +1,9 @@
 """Entry point: `agent-workforce <issue-number>` takes one board ticket to a green pull request.
 
 Order at boot: read the estate (refuse dark), point crewAI's stores at the volume, install the
-two trace exporters, check the laws are present, run, then prove the trace landed by querying
-Langfuse and printing the answer in the run log.
+two trace exporters, check the laws are present, brief the plan from the estate's shared memory,
+run, keep the outcome in that memory, then prove the trace landed by querying Langfuse and printing
+the answer in the run log.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import uuid
 import requests
 
 from agent_workforce import estate as estate_mod
+from agent_workforce import estate_memory
 from agent_workforce.estate import EXIT_DARK, Dark
 
 
@@ -69,6 +71,28 @@ def next_ticket(est: estate_mod.Estate, board_repo: str) -> int | None:
     return None
 
 
+NO_MEMORY = "nothing recorded yet."
+OUTCOME_CHARS = 800  # the outcome line kept in shared memory; the full result stays in the run log
+
+
+def recall_for_run(est: estate_mod.Estate, board_repo: str, issue_number: int) -> str:
+    """The estate's shared memory about this ticket, briefed by its title. Never fails the run."""
+    if not estate_memory.enabled():
+        return NO_MEMORY
+    task = f"board ticket {board_repo}#{issue_number}"
+    try:
+        from agent_workforce.tools.github_client import GitHub
+
+        title = GitHub(api=est.github_api, token=est.github_token).issue(
+            f"{est.repo_owner}/{board_repo}", issue_number
+        ).get("title")
+        if title:
+            task = f"{task}: {title}"
+    except Exception as why:  # noqa: BLE001 -- the number alone still briefs
+        print(f"estate memory: ticket title unavailable ({str(why)[:200]})", file=sys.stderr)
+    return estate_memory.brief(task) or NO_MEMORY
+
+
 def run(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) > 1 or (argv and not argv[0].isdigit()):
@@ -105,16 +129,25 @@ def run(argv: list[str] | None = None) -> int:
 
     from agent_workforce.crew import AgentWorkforce
 
+    ticket = f"{est.repo_owner}/{board_repo}#{issue_number}"
+    known = recall_for_run(est, board_repo, issue_number)
     tracer = trace.get_tracer("agent_workforce")
     with tracer.start_as_current_span(
         "agent-workforce.run",
         attributes={"langfuse.session.id": run_id, "session.id": run_id, "board.issue": issue_number},
     ):
         result = (
-            AgentWorkforce(est).crew().kickoff(inputs={"issue_number": issue_number, "board_repo": board_repo})
+            AgentWorkforce(est)
+            .crew()
+            .kickoff(inputs={"issue_number": issue_number, "board_repo": board_repo, "estate_memory": known})
         )
     provider.force_flush()
     print(result.raw)
+    estate_memory.remember(
+        f"agent-workforce run {run_id} on {ticket}: {(result.raw or '').strip()[:OUTCOME_CHARS]}",
+        subject=ticket,
+        kind="outcome",
+    )
 
     traces = _langfuse_trace_count(est, run_id)
     print(f"langfuse traces for session {run_id}: {traces}")
