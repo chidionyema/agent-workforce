@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: 7112db5c68146fa94104208b17c49cff657d549d
+          ref: eedfaf2c2d624468771b4938d26ca07367a812be
           path: idp
           persist-credentials: false
           sparse-checkout: |
@@ -34,7 +34,7 @@ jobs:
         working-directory: idp
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = 7112db5c68146fa94104208b17c49cff657d549d
+          test "$(git rev-parse HEAD)" = eedfaf2c2d624468771b4938d26ca07367a812be
           python3 -m venv "$RUNNER_TEMP/continuity"
           "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 temporalio==1.32.0 httpx ruff==0.15.18
           "$RUNNER_TEMP/continuity/bin/ruff" format --diff sovereign/engine/activities.py sovereign/engine/workflow.py sovereign/engine/test_instruction_id.py || true
@@ -81,7 +81,7 @@ jobs:
               return {}
           async def wait_for(handle, epoch):
               for _ in range(100):
-                  state = await handle.query("state")
+                  state = await handle.query("state", rpc_timeout=timedelta(seconds=5))
                   if state["status"] == "halted" and state["step"] == epoch:
                       return state
                   await asyncio.sleep(.1)
@@ -96,11 +96,12 @@ jobs:
               subject = b"meridian/instruction-yield-v1:" + json.dumps(body,sort_keys=True,separators=(",",":"),allow_nan=False).encode()
               return {"receipt":body,"signature":key.sign(subject).hex()}
           async def main():
-              async with await WorkflowEnvironment.start_time_skipping() as env:
+              async with await WorkflowEnvironment.start_local() as env:
                   queue = "independent-yield-canary"
                   def worker():
                       return Worker(env.client, task_queue=queue, workflows=[SessionWorkflow],
-                                    activities=[step,budget,receipt,notify,verify_instruction_yield])
+                                    activities=[step,budget,receipt,notify,verify_instruction_yield],
+                                    max_cached_workflows=0)
                   params = {
                       "session_id":iid,"instruction_id":iid,"task":task,"runner":"echo","budget":20,
                       "receipt_activity_timeout_s":10,"receipt_retry_max_attempts":1,
