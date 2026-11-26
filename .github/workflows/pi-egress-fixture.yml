@@ -8,18 +8,32 @@ permissions:
 jobs:
   fixture:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: chidionyema/idp
+          ref: d32c484a2b527608e9ac3ff904a31443f157b6a9
+          path: idp-source
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            bin/legion-admit
+            platform/llm/pennyd/providers/openrouter.toml
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
       - name: Install exact production harness without model credentials
         run: npm install -g --silent @earendil-works/pi-coding-agent@0.86.1
-      - name: Prove actual CLI and custom provider streaming tool loop
+      - name: Run the unmodified incident launcher against a synthetic TLS-only provider
         run: |
           python3 - <<'PY'
-          import http.server, json, os, pathlib, subprocess, tempfile, threading
-          from urllib.parse import urlsplit
+          import http.server, importlib.machinery, importlib.util, json, os, pathlib, shlex, shutil, ssl, subprocess, tempfile, threading
+          source = pathlib.Path("idp-source").resolve()
+          loader = importlib.machinery.SourceFileLoader("legion", str(source/"bin/legion-admit"))
+          spec = importlib.util.spec_from_loader(loader.name, loader)
+          legion = importlib.util.module_from_spec(spec)
+          loader.exec_module(legion)
           calls = []
           model = "nvidia/nemotron-3.5-lightning:free"
           class Handler(http.server.BaseHTTPRequestHandler):
@@ -34,11 +48,21 @@ jobs:
                       return
                   body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                   tools = [x.get("function", {}).get("name") for x in body.get("tools", [])]
-                  calls.append({"model_matches":body.get("model") == model, "stream":body.get("stream"), "tools":tools, "max_tokens":body.get("max_tokens"), "tool_result":any(x.get("role") == "tool" for x in body.get("messages", []))})
-                  if body.get("model") != model or not body.get("stream"):
+                  calls.append({"model_matches":body.get("model") == model,"stream":bool(body.get("stream")),"tools":tools,"max_tokens":body.get("max_tokens"),"max_completion_tokens":body.get("max_completion_tokens"),"tool_result":any(x.get("role") == "tool" for x in body.get("messages", []))})
+                  if body.get("model") != model:
                       self.send_error(400)
                       return
-                  if len(calls) == 1:
+                  if not body.get("stream"):
+                      assert tools == ["legion_ready"]
+                      message = {"role":"assistant","content":None,"tool_calls":[{"id":"ready_fixture","type":"function","function":{"name":"legion_ready","arguments":"{\"ready\":true}"}}]}
+                      payload = json.dumps({"id":"fixture","object":"chat.completion","created":1,"model":model,"choices":[{"index":0,"message":message,"finish_reason":"tool_calls"}]}).encode()
+                      self.send_response(200)
+                      self.send_header("Content-Type","application/json")
+                      self.send_header("Content-Length",str(len(payload)))
+                      self.end_headers()
+                      self.wfile.write(payload)
+                      return
+                  if not calls[-1]["tool_result"]:
                       delta = {"role":"assistant","tool_calls":[{"index":0,"id":"call_fixture","type":"function","function":{"name":"write","arguments":json.dumps({"path":"witness.txt","content":"fixture-ok\n"})}}]}
                       finish = "tool_calls"
                   else:
@@ -55,25 +79,69 @@ jobs:
                   self.wfile.flush()
           with tempfile.TemporaryDirectory() as tmp:
               root = pathlib.Path(tmp)
-              config = root / "config"
-              config.mkdir(mode=0o700)
-              (root/"sessions").mkdir()
-              (root/"home").mkdir()
+              workspace, runner, home, wrappers, registry = [root/n for n in ("work","runner","home","wrappers","registry")]
+              for d in (workspace,runner,home,wrappers,registry):
+                  d.mkdir()
+              sessions = runner/"sessions"
+              sessions.mkdir()
+              cert,key = root/"fixture.crt",root/"fixture.key"
+              subprocess.run(["openssl","req","-x509","-newkey","rsa:2048","-nodes","-days","1","-subj","/CN=127.0.0.1","-addext","subjectAltName=IP:127.0.0.1","-keyout",str(key),"-out",str(cert)],check=True,capture_output=True)
               server = http.server.ThreadingHTTPServer(("127.0.0.1",0),Handler)
+              ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+              ctx.load_cert_chain(cert,key)
+              server.socket = ctx.wrap_socket(server.socket,server_side=True)
               thread = threading.Thread(target=server.serve_forever,daemon=True)
               thread.start()
-              (config/"models.json").write_text(json.dumps({"providers":{"estate-admitted":{"baseUrl":f"http://127.0.0.1:{server.server_port}/v1","api":"openai-completions","apiKey":"$LEGION_SELECTED_KEY","models":[{"id":model,"name":model,"contextWindow":32768,"maxTokens":4096,"input":["text"],"reasoning":False}]}}}))
-              env = {k:v for k,v in os.environ.items() if k in ("PATH","LANG","LC_ALL","TERM","TMPDIR")}
-              env.update(HOME=str(root/"home"),PI_CODING_AGENT_DIR=str(config),LEGION_SELECTED_KEY="fixture-key",NO_PROXY="127.0.0.1,localhost")
+              real_pi = shutil.which("pi")
+              assert real_pi
+              # Only the synthetic certificate trust is added to the real CLI.
+              wrapper = wrappers/"pi"
+              wrapper.write_text("#!/bin/sh\nexport NODE_EXTRA_CA_CERTS="+shlex.quote(str(cert))+"\nexec "+shlex.quote(real_pi)+' "$@"\n')
+              wrapper.chmod(0o700)
+              original_registry = (source/"platform/llm/pennyd/providers/openrouter.toml").read_text()
+              base_url = f"https://127.0.0.1:{server.server_port}/v1"
+              assert "https://openrouter.ai/api/v1" in original_registry
+              (registry/"openrouter.toml").write_text(original_registry.replace("https://openrouter.ai/api/v1",base_url))
+              os.environ["SSL_CERT_FILE"] = str(cert)
+              env = {"PATH":str(wrappers)+os.pathsep+os.environ["PATH"],"HOME":str(home),"RUNNER_TEMP":str(runner),"OPENROUTER_API_KEY":"fixture-key","LEGION_SELECTED_KEY":"fixture-key","ADMITTED_KEY_ENV":"OPENROUTER_API_KEY","ADMITTED_PROVIDER":"openrouter","ADMITTED_MODEL":model,"LEGION_DISABLED_PROVIDERS":"gemini"}
+              prior = pathlib.Path.cwd()
               try:
-                  result = subprocess.run(["pi","-p","--provider","estate-admitted","--model",model,"--session-dir",str(root/"sessions"),"Create witness.txt with the text fixture-ok and finish."],cwd=root,env=env,capture_output=True,text=True,timeout=60)
-                  print("FIXTURE_RECEIPT",json.dumps({"exit":result.returncode,"calls":calls,"stdout":result.stdout[-1200:],"stderr":result.stderr[-1200:],"witness":(root/"witness.txt").is_file()}))
-                  assert result.returncode == 0
-                  assert len(calls) == 2 and all(x["model_matches"] and x["stream"] for x in calls)
-                  assert "write" in calls[0]["tools"] and calls[1]["tool_result"]
-                  assert (root/"witness.txt").read_text() == "fixture-ok\n"
-                  print("REAL_CLI_LOOPBACK_TOOL_EFFECT_PASS")
+                  os.chdir(workspace)
+                  subprocess.run(["git","init","-q"],check=True)
+                  subprocess.run(["git","-c","user.name=Fixture","-c","user.email=fixture@example.invalid","commit","--allow-empty","-qm","fixture baseline"],check=True)
+                  base = subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+                  routes = legion.auto_candidates(registry,env)
+                  assert len(routes)==1 and routes[0]["base"]==base_url
+                  route = routes[0]
+                  probe = legion.auto_probe(route,env)
+                  assert probe["verdict"]=="capacity",probe
+                  record = {"decision":"ADMITTED","route":route,"paths":["witness.txt"],"base":base}
+                  # Reproduce the actual agent job's environment: only the selected key
+                  # and its admitted name survive, not the direct provider variable.
+                  env.pop("OPENROUTER_API_KEY")
+                  rc = legion.auto_launch(registry,record,"Create witness.txt with the text fixture-ok and finish.",sessions,env)
+                  print("EXACT_LAUNCH_RECEIPT",json.dumps({"rc":rc,"calls":calls,"probe":probe,"witness":(workspace/"witness.txt").is_file()}))
+                  assert rc==0
+                  assert len(calls)==3 and all(x["model_matches"] for x in calls)
+                  assert not calls[0]["stream"] and calls[1]["stream"] and calls[2]["tool_result"]
+                  assert (workspace/"witness.txt").read_text()=="fixture-ok\n"
+                  try:
+                      legion.verify_agent_scope(["not-witness.txt"])
+                  except ValueError as exc:
+                      assert "AGENT_SCOPE_ESCAPE" in str(exc)
+                  else:
+                      raise AssertionError("scope escape accepted")
+                  before=len(calls)
+                  try:
+                      legion.auto_launch(registry,{**record,"base":"0"*40},"refuse",sessions,env)
+                  except ValueError as exc:
+                      assert "base mismatch" in str(exc)
+                  else:
+                      raise AssertionError("stale admission accepted")
+                  assert len(calls)==before
+                  print("EXACT_PRODUCTION_LAUNCHER_TLS_FIXTURE_PASS")
               finally:
+                  os.chdir(prior)
                   server.shutdown()
                   server.server_close()
           PY
