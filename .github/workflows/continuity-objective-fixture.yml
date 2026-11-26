@@ -1,44 +1,136 @@
-name: Continuity objective fixture
+name: Temporal instruction yield falsifier
 on:
   push:
     branches:
-      - research/continuity-objective-fixture-20261126
+      - research/temporal-yield-falsifier-20261126
 permissions:
   contents: read
 jobs:
   fixture:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: 6d15682390a5922a880f9e82bcf007441998642b
+          ref: 7112db5c68146fa94104208b17c49cff657d549d
           path: idp
           persist-credentials: false
           sparse-checkout: |
+            sovereign
             platform/estate
-            tests/estate/test_continuity_conserved_objective.py
-            tests/estate/test_continuity_control.py
+            tests/test_settler.py
             tests/test_continuity_operating_receipt.py
             tests/test_continuity_retry_budget.py
+            tests/estate/test_continuity_conserved_objective.py
+            settler.py
             pyproject.toml
+            AGENTS.md
           sparse-checkout-cone-mode: false
-      - name: Execute exact candidate falsifier
+      - name: Verify exact candidate and execute independent controls
         working-directory: idp
         run: |
-          test "$(git rev-parse HEAD)" = 6d15682390a5922a880f9e82bcf007441998642b
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 7112db5c68146fa94104208b17c49cff657d549d
           python3 -m venv "$RUNNER_TEMP/continuity"
-          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 ruff==0.15.18
-          "$RUNNER_TEMP/continuity/bin/ruff" check --select E9,F,B,S platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py platform/estate/continuity/canary_stage2.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
-          "$RUNNER_TEMP/continuity/bin/ruff" format --diff platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py platform/estate/continuity/canary_stage2.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
-          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py
+          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 temporalio==1.32.0 httpx ruff==0.15.18
+          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/test_settler.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py tests/estate/test_continuity_conserved_objective.py sovereign/engine/test_instruction_id.py
           "$RUNNER_TEMP/continuity/bin/python" platform/estate/continuity/canary.py
-      - name: Independently observe original router obligation
+      - name: Real Temporal server, worker restart and independent settlement
+        working-directory: idp
         run: |
-          for base in https://llm.meridianlabs.cloud https://llm.mumchimp.com; do
-            printf '%s health=' "$base"
-            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' "$base/health" || true
-            printf '%s invalid-bearer=' "$base"
-            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' -H 'Authorization: Bearer invalid-test-token' "$base/v1/models" || true
-          done
+          set -euo pipefail
+          "$RUNNER_TEMP/continuity/bin/python" - <<'PY'
+          import asyncio, hashlib, json, os, tempfile
+          from pathlib import Path
+          from datetime import timedelta
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+          from temporalio import activity
+          from temporalio.testing import WorkflowEnvironment
+          from temporalio.worker import Worker
+          from sovereign.engine.workflow import SessionWorkflow
+          from sovereign.engine.activities import verify_instruction_yield
+
+          signer = Ed25519PrivateKey.generate()
+          os.environ["ESTATE_YIELD_VERIFIER_PUBKEY_HEX"] = signer.public_key().public_bytes_raw().hex()
+          root = Path(tempfile.mkdtemp())
+          effect = root / "effect.txt"
+          task = "produce independently readable effect"
+          iid = "INS-REAL-CANARY-20261126"
+          observed = []
+          @activity.defn(name="run_step")
+          async def step(inp):
+              observed.append(inp["step"])
+              if inp["task"] != task:
+                  raise RuntimeError("root objective drift")
+              if inp["step"] == 2:
+                  effect.write_text("verified result")
+              return {"done": True, "output": "all done", "tokens": 1}
+          @activity.defn(name="budget_op")
+          async def budget(inp):
+              return {"remaining": 20}
+          @activity.defn(name="append_receipt")
+          async def receipt(inp):
+              return inp
+          @activity.defn(name="notify_change")
+          async def notify(inp):
+              return {}
+          async def wait_for(handle, epoch):
+              for _ in range(100):
+                  state = await handle.query("state")
+                  if state["status"] == "halted" and state["step"] == epoch:
+                      return state
+                  await asyncio.sleep(.1)
+              raise RuntimeError("no durable recovery state")
+          def envelope(run_id, epoch, action, witness, key=signer):
+              body = {
+                  "instruction_id": iid, "run_id": run_id, "epoch": epoch,
+                  "goal_sha256": hashlib.sha256(task.encode()).hexdigest(),
+                  "commit_sha": None, "action": action, "ok": True,
+                  "effect_ref": witness, "reconciled": True,
+              }
+              subject = b"meridian/instruction-yield-v1:" + json.dumps(body,sort_keys=True,separators=(",",":"),allow_nan=False).encode()
+              return {"receipt":body,"signature":key.sign(subject).hex()}
+          async def main():
+              async with await WorkflowEnvironment.start_time_skipping() as env:
+                  queue = "independent-yield-canary"
+                  def worker():
+                      return Worker(env.client, task_queue=queue, workflows=[SessionWorkflow],
+                                    activities=[step,budget,receipt,notify,verify_instruction_yield])
+                  params = {
+                      "session_id":iid,"instruction_id":iid,"task":task,"runner":"echo","budget":20,
+                      "receipt_activity_timeout_s":10,"receipt_retry_max_attempts":1,
+                      "notify_activity_timeout_s":10,"notify_retry_max_attempts":1,
+                      "step_start_to_close_min":1,"step_heartbeat_s":10,
+                      "step_activity_retry_max_attempts":1,"last_output_max_chars":1024,
+                      "fsm_max_cycles":5,
+                  }
+                  async with worker():
+                      handle = await env.client.start_workflow(SessionWorkflow.run,params,id=iid,task_queue=queue)
+                      await wait_for(handle,1)
+                      assert not effect.exists()
+                      desc = await handle.describe()
+                      run_id = desc.run_id
+                      await handle.signal("submit_independent_yield",envelope(run_id,1,"settle","forged",Ed25519PrivateKey.generate()))
+                      await asyncio.sleep(.5)
+                      assert (await handle.query("state"))["status"] == "halted"
+                  # Real worker shutdown/restart. The outstanding obligation is still on server.
+                  async with worker():
+                      await wait_for(handle,1)
+                      assert not effect.exists()
+                      await handle.signal("submit_independent_yield",envelope(run_id,1,"retry","observer-confirmed-no-effect"))
+                      await wait_for(handle,2)
+                      assert effect.read_text() == "verified result"
+                      # Old epoch's valid signature must not close the successor.
+                      await handle.signal("submit_independent_yield",envelope(run_id,1,"settle","stale"))
+                      await asyncio.sleep(.5)
+                      assert (await handle.query("state"))["status"] == "halted"
+                      digest = hashlib.sha256(effect.read_bytes()).hexdigest()
+                      await handle.signal("submit_independent_yield",envelope(run_id,2,"settle",digest))
+                      state = await asyncio.wait_for(handle.result(),20)
+                      assert state["status"] == "done"
+                      assert state["instruction_id"] == iid and state["task"] == task
+                      assert observed == [1,2]
+                      print(json.dumps({"canary":"REAL_TEMPORAL_TEST_SERVER","worker_restart":True,"false_completion_rejected":True,"stale_receipt_rejected":True,"original_objective_retained":True,"verified_effect_sha256":digest,"attempts":observed,"final_state":state["status"]}))
+          asyncio.run(main())
+          PY
