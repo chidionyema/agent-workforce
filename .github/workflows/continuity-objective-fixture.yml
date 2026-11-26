@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: eedfaf2c2d624468771b4938d26ca07367a812be
+          ref: 71ab603b43236adfd65907d57661bfe87d19a45a
           path: idp
           persist-credentials: false
           sparse-checkout: |
@@ -34,7 +34,7 @@ jobs:
         working-directory: idp
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = eedfaf2c2d624468771b4938d26ca07367a812be
+          test "$(git rev-parse HEAD)" = 71ab603b43236adfd65907d57661bfe87d19a45a
           python3 -m venv "$RUNNER_TEMP/continuity"
           "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 temporalio==1.32.0 httpx ruff==0.15.18
           "$RUNNER_TEMP/continuity/bin/ruff" format --diff sovereign/engine/activities.py sovereign/engine/workflow.py sovereign/engine/test_instruction_id.py || true
@@ -53,6 +53,7 @@ jobs:
           from temporalio.testing import WorkflowEnvironment
           from temporalio.worker import Worker
           from sovereign.engine.workflow import SessionWorkflow
+          from sovereign.engine import activities
           from sovereign.engine.activities import verify_instruction_yield
 
           signer = Ed25519PrivateKey.generate()
@@ -80,7 +81,7 @@ jobs:
           async def notify(inp):
               return {}
           async def wait_for(handle, epoch):
-              for _ in range(100):
+              for _ in range(500):
                   state = await handle.query("state", rpc_timeout=timedelta(seconds=5))
                   if state["status"] == "halted" and state["step"] == epoch:
                       return state
@@ -95,6 +96,16 @@ jobs:
               }
               subject = b"meridian/instruction-yield-v1:" + json.dumps(body,sort_keys=True,separators=(",",":"),allow_nan=False).encode()
               return {"receipt":body,"signature":key.sign(subject).hex()}
+          # Separate test observer issues a signed receipt only after observing the fixture effect.
+          polls = []
+          async def observe(expected):
+              polls.append(expected["epoch"])
+              if expected["epoch"] == 1 and not effect.exists():
+                  return envelope(expected["run_id"], 1, "retry", "observer-confirmed-no-effect")
+              if expected["epoch"] == 2 and effect.exists():
+                  return envelope(expected["run_id"], 2, "settle", hashlib.sha256(effect.read_bytes()).hexdigest())
+              return None
+          activities._fetch_independent_yield = observe
           async def main():
               async with await WorkflowEnvironment.start_local() as env:
                   queue = "independent-yield-canary"
@@ -123,7 +134,7 @@ jobs:
                   async with worker():
                       await wait_for(handle,1)
                       assert not effect.exists()
-                      await handle.signal("submit_independent_yield",envelope(run_id,1,"retry","observer-confirmed-no-effect"))
+                      # No retry signal: the controller must wake its observer itself.
                       await wait_for(handle,2)
                       assert effect.read_text() == "verified result"
                       # Old epoch's valid signature must not close the successor.
@@ -131,11 +142,12 @@ jobs:
                       await asyncio.sleep(.5)
                       assert (await handle.query("state"))["status"] == "halted"
                       digest = hashlib.sha256(effect.read_bytes()).hexdigest()
-                      await handle.signal("submit_independent_yield",envelope(run_id,2,"settle",digest))
-                      state = await asyncio.wait_for(handle.result(),20)
+                      # No settlement signal: only the autonomous observer tick.
+                      state = await asyncio.wait_for(handle.result(),45)
                       assert state["status"] == "done"
                       assert state["instruction_id"] == iid and state["task"] == task
                       assert observed == [1,2]
-                      print(json.dumps({"canary":"REAL_TEMPORAL_TEST_SERVER","worker_restart":True,"false_completion_rejected":True,"stale_receipt_rejected":True,"original_objective_retained":True,"verified_effect_sha256":digest,"attempts":observed,"final_state":state["status"]}))
+                      assert polls == [1,2]
+                      print(json.dumps({"canary":"REAL_TEMPORAL_TEST_SERVER","worker_restart":True,"false_completion_rejected":True,"stale_receipt_rejected":True,"original_objective_retained":True,"verified_effect_sha256":digest,"attempts":observed,"controller_poll_epochs":polls,"final_state":state["status"]}))
           asyncio.run(main())
           PY
