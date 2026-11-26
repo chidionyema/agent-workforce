@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: 28804dbc8d3a420a74b7efe2c7cfd0ef384bb702
+          ref: 6d15682390a5922a880f9e82bcf007441998642b
           path: idp
           persist-credentials: false
           sparse-checkout: |
@@ -27,10 +27,18 @@ jobs:
       - name: Execute exact candidate falsifier
         working-directory: idp
         run: |
-          test "$(git rev-parse HEAD)" = 28804dbc8d3a420a74b7efe2c7cfd0ef384bb702
+          test "$(git rev-parse HEAD)" = 6d15682390a5922a880f9e82bcf007441998642b
           python3 -m venv "$RUNNER_TEMP/continuity"
-          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 ruff==0.11.13
-          "$RUNNER_TEMP/continuity/bin/ruff" check --select E9,F,B,S platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
-          "$RUNNER_TEMP/continuity/bin/ruff" format --diff platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
+          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 ruff==0.15.18
+          "$RUNNER_TEMP/continuity/bin/ruff" check --select E9,F,B,S platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py platform/estate/continuity/canary_stage2.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
+          "$RUNNER_TEMP/continuity/bin/ruff" format --diff platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py platform/estate/continuity/control.py platform/estate/continuity/store.py platform/estate/continuity/canary_stage2.py tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py
           "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py tests/estate/test_continuity_control.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py
           "$RUNNER_TEMP/continuity/bin/python" platform/estate/continuity/canary.py
+      - name: Independently observe original router obligation
+        run: |
+          for base in https://llm.meridianlabs.cloud https://llm.mumchimp.com; do
+            printf '%s health=' "$base"
+            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' "$base/health" || true
+            printf '%s invalid-bearer=' "$base"
+            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' -H 'Authorization: Bearer invalid-test-token' "$base/v1/models" || true
+          done
