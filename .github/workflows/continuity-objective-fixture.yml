@@ -40,5 +40,5 @@ jobs:
             printf '%s health=' "$base"
             curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' "$base/health" || true
             printf '%s invalid-bearer=' "$base"
-            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' -H 'Authorization: Bearer invalid-test-token' "$base/v1/models" || true
+            curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}\n' -H 'Authorization: Bearer invalid-test-token' -H 'Content-Type: application/json' --data-binary '{' "$base/v1/chat/completions" || true
           done
