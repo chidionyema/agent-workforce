@@ -13,17 +13,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: fe1a73038beceafc93b7179dd770c350fd51ab4f
+          ref: a4fca3e647f561378eae60e78dc7550172096bcd
           path: idp
           persist-credentials: false
           sparse-checkout: |
             platform/estate
             tests/estate/test_continuity_conserved_objective.py
+            tests/test_continuity_operating_receipt.py
+            tests/test_continuity_retry_budget.py
+            pyproject.toml
           sparse-checkout-cone-mode: false
       - name: Execute exact candidate falsifier
         working-directory: idp
         run: |
-          test "$(git rev-parse HEAD)" = fe1a73038beceafc93b7179dd770c350fd51ab4f
+          test "$(git rev-parse HEAD)" = a4fca3e647f561378eae60e78dc7550172096bcd
           python3 -m venv "$RUNNER_TEMP/continuity"
-          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3
-          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py
+          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 ruff==0.11.13
+          "$RUNNER_TEMP/continuity/bin/ruff" check --select E9,F,B,S platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py tests/estate/test_continuity_conserved_objective.py
+          "$RUNNER_TEMP/continuity/bin/ruff" format --check platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py tests/estate/test_continuity_conserved_objective.py
+          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py
