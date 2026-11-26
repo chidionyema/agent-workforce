@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: a4fca3e647f561378eae60e78dc7550172096bcd
+          ref: 446234beffa323c93ba8b399d0c3ee1f31798b26
           path: idp
           persist-credentials: false
           sparse-checkout: |
@@ -26,9 +26,9 @@ jobs:
       - name: Execute exact candidate falsifier
         working-directory: idp
         run: |
-          test "$(git rev-parse HEAD)" = a4fca3e647f561378eae60e78dc7550172096bcd
+          test "$(git rev-parse HEAD)" = 446234beffa323c93ba8b399d0c3ee1f31798b26
           python3 -m venv "$RUNNER_TEMP/continuity"
           "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 ruff==0.11.13
           "$RUNNER_TEMP/continuity/bin/ruff" check --select E9,F,B,S platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py tests/estate/test_continuity_conserved_objective.py
-          "$RUNNER_TEMP/continuity/bin/ruff" format --check platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py tests/estate/test_continuity_conserved_objective.py
+          "$RUNNER_TEMP/continuity/bin/ruff" format --diff platform/estate/continuity/accept_txn.py platform/estate/continuity/checkpoints.py tests/estate/test_continuity_conserved_objective.py
           "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py
