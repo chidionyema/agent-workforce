@@ -1,0 +1,29 @@
+name: Continuity objective fixture
+on:
+  push:
+    branches:
+      - research/continuity-objective-fixture-20261126
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: chidionyema/idp
+          ref: fe1a73038beceafc93b7179dd770c350fd51ab4f
+          path: idp
+          persist-credentials: false
+          sparse-checkout: |
+            platform/estate
+            tests/estate/test_continuity_conserved_objective.py
+          sparse-checkout-cone-mode: false
+      - name: Execute exact candidate falsifier
+        working-directory: idp
+        run: |
+          test "$(git rev-parse HEAD)" = fe1a73038beceafc93b7179dd770c350fd51ab4f
+          python3 -m venv "$RUNNER_TEMP/continuity"
+          "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3
+          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/estate/test_continuity_conserved_objective.py
