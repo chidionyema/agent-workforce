@@ -1,0 +1,178 @@
+name: One-shot deterministic execution falsifier
+on:
+  push:
+    branches: [research/pi-egress-fixture-20261126]
+    paths: ['.github/workflows/one-shot-transaction-falsifier.yml']
+permissions:
+  contents: read
+env:
+  EXACT: 2cf17ba2f87f5d368cc304e213b579635076bf9b
+  STALE: fe76f73cd124cce096aefcbfa564d3c0e733e2ab
+jobs:
+  transaction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805da76410c181273ba90b1
+        with:
+          repository: chidionyema/idp
+          ref: 2cf17ba2f87f5d368cc304e213b579635076bf9b
+          path: idp-source
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /bin/
+            /platform/llm/pennyd/providers/
+            /tests/test_legion_admit.py
+            /pyproject.toml
+            /catalog/
+            /docs/
+            /features/
+            /AGENTS.md
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12'
+      - name: Preflight actual dependencies
+        working-directory: idp-source
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest==8.4.2 ruff==0.15.18 pyyaml
+          git fetch --no-tags --depth=1 origin "$STALE"
+      - name: Deterministic admission, real execution, and lost acknowledgement recovery
+        working-directory: idp-source
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,pathlib,re,subprocess,sys,time
+          out=pathlib.Path(os.environ["RUNNER_TEMP"])/"transaction-receipt"
+          out.mkdir()
+          receipt=out/"receipt.json"
+          expected={"bin/legion-admit":"6316eb31c41d5f7a8c804f60dc255f3e4fed7d83","tests/test_legion_admit.py":"366eeb03457fe1ad9d75de0095d13e3cf9120b5b"}
+          exact,stale=os.environ["EXACT"],os.environ["STALE"]
+          def git(*args):
+              return subprocess.check_output(["git",*args],text=True,timeout=10).strip()
+          def hashes(ref):
+              return {p:git("rev-parse",f"{ref}:{p}") for p in expected}
+          def select(routes):
+              rejected=[]
+              for ref in routes:
+                  if hashes(ref)!=expected:
+                      rejected.append({"ref":ref,"reason":"SOURCE_IDENTITY_MISMATCH"})
+                      continue
+                  return ref,rejected
+              return None,rejected
+          assert select([stale])[0] is None
+          chosen,rejected=select([stale,exact])
+          assert chosen==exact and len(rejected)==1
+          assert git("rev-parse","HEAD")==chosen
+          assert {p:git("hash-object",p) for p in expected}==expected
+          assert subprocess.check_output([sys.executable,"-m","ruff","--version"],text=True).strip()=="ruff 0.15.18"
+          assert sys.version_info[:2]==(3,12)
+          assert not receipt.exists()
+          effect_id=hashlib.sha256(("verify-legion:"+exact).encode()).hexdigest()
+          print("ADMISSION",json.dumps({"selected":chosen,"rejected":rejected,"no_viable_route_refused":True,"effect":effect_id,"production_authority":False}),flush=True)
+          worker=r'''
+          import json,os,pathlib,re,subprocess,sys,time
+          path=pathlib.Path(sys.argv[1]); envelope=json.loads(sys.argv[2])
+          start=time.monotonic()
+          steps=[
+            [sys.executable,"-m","ruff","format","--check","--extension",":python","bin/legion-admit","tests/test_legion_admit.py"],
+            [sys.executable,"-m","ruff","check","--extension",":python","bin/legion-admit","tests/test_legion_admit.py"],
+            [sys.executable,"-W","error","-m","py_compile","bin/legion-admit","tests/test_legion_admit.py"],
+            [sys.executable,"-m","pytest","--noconftest","-q","tests/test_legion_admit.py"],
+          ]
+          outputs=[]
+          for argv in steps:
+              p=subprocess.run(argv,capture_output=True,text=True,timeout=75)
+              outputs.append({"argv":argv[1:],"rc":p.returncode,"stdout":p.stdout[-8000:],"stderr":p.stderr[-1000:]})
+              if p.returncode:
+                  print(p.stdout,p.stderr,flush=True)
+                  raise SystemExit(1)
+          assert re.search(r"\b49 passed\b",outputs[-1]["stdout"])
+          data={**envelope,"outputs":outputs,"elapsed_s":round(time.monotonic()-start,3),"effect_count":1}
+          temp=path.with_suffix(".tmp")
+          with temp.open("w") as f:
+              json.dump(data,f,sort_keys=True); f.flush(); os.fsync(f.fileno())
+          os.replace(temp,path)
+          fd=os.open(path.parent,os.O_RDONLY)
+          try: os.fsync(fd)
+          finally: os.close(fd)
+          os._exit(42)
+          '''
+          envelope={"schema":1,"effect_id":effect_id,"source":chosen,"blobs":expected,"rejected":rejected,"run":os.environ["GITHUB_RUN_ID"],"attempt":os.environ["GITHUB_RUN_ATTEMPT"]}
+          launches=0
+          def reconcile():
+              global launches
+              if not receipt.exists():
+                  launches+=1
+                  rc=subprocess.run([sys.executable,"-c",worker,str(receipt),json.dumps(envelope)],timeout=120).returncode
+                  assert rc==42,rc
+                  print("WORKER_EXIT_BEFORE_ACK",rc,flush=True)
+              data=json.loads(receipt.read_text())
+              assert all(data.get(k)==v for k,v in envelope.items())
+              assert data["effect_count"]==1
+              assert len(data["outputs"])==4 and all(x["rc"]==0 for x in data["outputs"])
+              assert re.search(r"\b49 passed\b",data["outputs"][-1]["stdout"])
+              assert {p:git("hash-object",p) for p in expected}==expected
+              return hashlib.sha256(receipt.read_bytes()).hexdigest()
+          digest=reconcile()
+          assert reconcile()==digest and launches==1
+          (out/"sha256").write_text(digest+"\n")
+          print("RECOVERY_RECEIPT",json.dumps({"worker_launches":launches,"replay_duplicate_effects":0,"ack_recovered":True,"sha256":digest,"tests":49,"founder_reinstructions":0,"model_calls":0}),flush=True)
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: transaction-receipt
+          path: ${{ runner.temp }}/transaction-receipt/
+          if-no-files-found: error
+          retention-days: 14
+  independent-verifier:
+    needs: transaction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: transaction-receipt
+          path: evidence
+      - uses: actions/checkout@3d3c42e5aac5ba805da76410c181273ba90b1
+        with:
+          repository: chidionyema/idp
+          ref: 2cf17ba2f87f5d368cc304e213b579635076bf9b
+          path: idp-source
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /bin/
+            /platform/llm/pennyd/providers/
+            /tests/test_legion_admit.py
+            /pyproject.toml
+            /catalog/
+            /docs/
+            /features/
+            /AGENTS.md
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12'
+      - name: Independently verify effect from fresh runner and rerun acceptance
+        working-directory: idp-source
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest==8.4.2 ruff==0.15.18 pyyaml
+          python - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          p=pathlib.Path("../evidence/receipt.json")
+          d=json.loads(p.read_text())
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==p.with_name("sha256").read_text().strip()
+          assert d["source"]==os.environ["EXACT"] and d["run"]==os.environ["GITHUB_RUN_ID"]
+          assert d["effect_id"]==hashlib.sha256(("verify-legion:"+os.environ["EXACT"]).encode()).hexdigest()
+          assert d["effect_count"]==1
+          assert d["rejected"]==[{"ref":os.environ["STALE"],"reason":"SOURCE_IDENTITY_MISMATCH"}]
+          expected={"bin/legion-admit":"6316eb31c41d5f7a8c804f60dc255f3e4fed7d83","tests/test_legion_admit.py":"366eeb03457fe1ad9d75de0095d13e3cf9120b5b"}
+          assert d["blobs"]==expected
+          assert all(subprocess.check_output(["git","hash-object",p],text=True).strip()==h for p,h in expected.items())
+          print("INDEPENDENT_RECEIPT_AND_SOURCE_PASS")
+          PY
+          python -m ruff format --check --extension :python bin/legion-admit tests/test_legion_admit.py
+          python -m ruff check --extension :python bin/legion-admit tests/test_legion_admit.py
+          python -m pytest --noconftest -q tests/test_legion_admit.py
+          echo ONE_SHOT_RESEARCH_EFFECT_INDEPENDENTLY_VERIFIED
