@@ -13,19 +13,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: chidionyema/idp
-          ref: d32c484a2b527608e9ac3ff904a31443f157b6a9
+          ref: fe76f73cd124cce096aefcbfa564d3c0e733e2ab
           path: idp-source
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            bin/legion-admit
-            platform/llm/pennyd/providers/openrouter.toml
+            /bin/
+            /platform/llm/pennyd/providers/
+            /tests/test_legion_admit.py
+            /pyproject.toml
+            /catalog/
+            /docs/
+            /features/
+            /AGENTS.md
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
       - name: Install exact production harness without model credentials
         run: npm install -g --silent @earendil-works/pi-coding-agent@0.86.1
-      - name: Run the unmodified incident launcher against a synthetic TLS-only provider
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.12'
+      - name: Exact candidate test and formatting
+        working-directory: idp-source
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest==8.4.2 ruff==0.15.18 pyyaml
+          ruff format --extension :python bin/legion-admit tests/test_legion_admit.py
+          ruff check --extension :python bin/legion-admit tests/test_legion_admit.py
+          python -W error -m py_compile bin/legion-admit tests/test_legion_admit.py
+          python -m pytest --noconftest -q tests/test_legion_admit.py
+          git diff --check
+          echo "NORMALIZED_BLOBS $(git hash-object bin/legion-admit) $(git hash-object tests/test_legion_admit.py)"
+          git diff -- bin/legion-admit tests/test_legion_admit.py
+      - name: Run the corrected incident launcher against a strict synthetic TLS-only provider
         run: |
           python3 - <<'PY'
           import http.server, importlib.machinery, importlib.util, json, os, pathlib, shlex, shutil, ssl, subprocess, tempfile, threading
@@ -49,7 +70,7 @@ jobs:
                   body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                   tools = [x.get("function", {}).get("name") for x in body.get("tools", [])]
                   calls.append({"model_matches":body.get("model") == model,"stream":bool(body.get("stream")),"tools":tools,"max_tokens":body.get("max_tokens"),"max_completion_tokens":body.get("max_completion_tokens"),"tool_result":any(x.get("role") == "tool" for x in body.get("messages", []))})
-                  if body.get("model") != model:
+                  if body.get("model") != model or type(body.get("max_tokens")) is not int or not 1 <= body["max_tokens"] <= 1024 or "max_completion_tokens" in body:
                       self.send_error(400)
                       return
                   if not body.get("stream"):
@@ -124,6 +145,7 @@ jobs:
                   assert rc==0
                   assert len(calls)==3 and all(x["model_matches"] for x in calls)
                   assert not calls[0]["stream"] and calls[1]["stream"] and calls[2]["tool_result"]
+                  assert all(x["max_tokens"]==1024 and x["max_completion_tokens"] is None for x in calls)
                   assert (workspace/"witness.txt").read_text()=="fixture-ok\n"
                   try:
                       legion.verify_agent_scope(["not-witness.txt"])
@@ -139,7 +161,7 @@ jobs:
                   else:
                       raise AssertionError("stale admission accepted")
                   assert len(calls)==before
-                  print("EXACT_PRODUCTION_LAUNCHER_TLS_FIXTURE_PASS")
+                  print("CORRECTED_PRODUCTION_LAUNCHER_STRICT_WIRE_PASS")
               finally:
                   os.chdir(prior)
                   server.shutdown()
