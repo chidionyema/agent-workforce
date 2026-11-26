@@ -27,6 +27,9 @@ jobs:
             pyproject.toml
             AGENTS.md
           sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: "3.12"
       - name: Verify exact candidate and execute independent controls
         working-directory: idp
         run: |
@@ -34,7 +37,8 @@ jobs:
           test "$(git rev-parse HEAD)" = 7112db5c68146fa94104208b17c49cff657d549d
           python3 -m venv "$RUNNER_TEMP/continuity"
           "$RUNNER_TEMP/continuity/bin/pip" install pytest==8.3.5 cryptography==44.0.3 temporalio==1.32.0 httpx ruff==0.15.18
-          "$RUNNER_TEMP/continuity/bin/python" -m pytest -q tests/test_settler.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py tests/estate/test_continuity_conserved_objective.py sovereign/engine/test_instruction_id.py
+          "$RUNNER_TEMP/continuity/bin/ruff" format --diff sovereign/engine/activities.py sovereign/engine/workflow.py sovereign/engine/test_instruction_id.py || true
+          "$RUNNER_TEMP/continuity/bin/python" -m pytest --noconftest -q tests/test_settler.py tests/test_continuity_operating_receipt.py tests/test_continuity_retry_budget.py tests/estate/test_continuity_conserved_objective.py sovereign/engine/test_instruction_id.py
           "$RUNNER_TEMP/continuity/bin/python" platform/estate/continuity/canary.py
       - name: Real Temporal server, worker restart and independent settlement
         working-directory: idp
